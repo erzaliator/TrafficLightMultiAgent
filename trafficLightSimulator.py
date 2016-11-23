@@ -77,6 +77,28 @@ def getNeighbours(name) :
 	return neighbours
 
 
+def getAgentLoc(name) :
+	name = name.split('@')[0]
+	i, j = int(name.split('_')[1]), int(name.split('_')[2])
+	return i, j
+
+def VehiclesFrom(agent, toAgentName, direction) :
+	i, j = getAgentLoc(toAgentName)
+	agent_i, agent_j = getAgentLoc(agent['name'])
+
+	if direction == "NS" :
+		if agent_i < i :
+			return traffic['col'][agent_i]
+		else :
+			return traffic['col'][i]
+
+	else :
+		if agent_j < j :
+			return traffic['row'][agent_j]
+		else :
+			return traffic['row'][j]
+
+
 class JunctionController(spade.Agent.Agent) :
 
 	class InitReceive(spade.Behaviour.OneShotBehaviour) :
@@ -92,16 +114,16 @@ class JunctionController(spade.Agent.Agent) :
 				root = fromstring(str(self.msg))
 				content = root.find('content')
 				agentInfo = content.text.split("|")
-				name, priority, value = agentInfo[0], agentInfo[1], agentInfo[2]
+				name, priority, value, m = agentInfo[0], agentInfo[1], agentInfo[2], agentInfo[3]
 				d['name'] = name
 				d['priority'] = priority
 				d['value'] = value
+				d['m'] = m
 
 				self.myAgent.agent_view.append(d)
 				self.myAgent.good_list.append(d)
 
-				print "recieve from " + name + " to " + self.myAgent.getName() + "\n"
-				# print name + " in " + self.myAgent.getName()
+				# print "recieve from " + name + " to " + self.myAgent.getName() + "\n"
 
 
 	class InitSend(spade.Behaviour.OneShotBehaviour) :
@@ -109,7 +131,7 @@ class JunctionController(spade.Agent.Agent) :
 			neighbours = getNeighbours(self.getName())
 
 			for neighbour in neighbours :
-				receiver = spade.AID.aid(name=getName(neighbour[0], neighbour[1]) + "@127.0.0.1", 
+				receiver = spade.AID.aid(name=getName(neighbour[0], neighbour[1]) + "@127.0.0.1",
 					addresses=["xmpp://" + getName(neighbour[0], neighbour[1]) +"@127.0.0.1"])
 
 				self.msg = spade.ACLMessage.ACLMessage()
@@ -117,11 +139,79 @@ class JunctionController(spade.Agent.Agent) :
 				self.msg.setOntology("init")
 				self.msg.setLanguage("OWL-S")
 				self.msg.addReceiver(receiver)
-				# print self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value)
-				self.msg.setContent(self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value))
+				self.msg.setContent(self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value) \
+				 + '|' + str(self.myAgent.m))
 
 				self.myAgent.send(self.msg)
-				print "send from " + self.getName() + " to " + str(neighbour) + " : " + self.msg.getContent() + "\n"
+				# print "send from " + self.getName() + " to " + str(neighbour) + " : " + self.msg.getContent() + "\n"
+
+
+	class CheckAgentView(spade.Behaviour.PeriodicBehaviour) :
+		def onStart(self) :
+			print self.myAgent.name + " checking Agent View...\n"
+
+		def _onTick(self) :
+			Fcost = self.myAgent.getFcost()
+
+			if Fcost > self.myAgent.Fstar :
+				if self.myAgent.value == "NS" :
+					self.myAgent.value = "EW"
+				else :
+					self.myAgent.value = "NS"
+
+			Fcost_new = self.myAgent.getFcost()
+
+			if Fcost_new > self.myAgent.Fstar :
+				self.myAgent.m = 1
+
+			for agent in self.myAgent.agent_view :
+				receiver = spade.AID.aid(name=agent['name'], addresses=["xmpp://" + agent['name']])
+
+				self.msg = spade.ACLMessage.ACLMessage()
+				self.msg.setPerformative("inform")
+				self.msg.setOntology("value")
+				self.msg.setLanguage("OWL-S")
+				self.msg.addReceiver(receiver)
+				self.msg.setContent(self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value) \
+				 + '|' + str(self.myAgent.m))
+
+				self.myAgent.send(self.msg)
+				print "send from " + self.getName() + " to " + str(agent['name']) + "\n"
+
+
+	class ValueReceive(spade.Behaviour.PeriodicBehaviour) :
+		def _process(self) :
+			self.msg = None
+
+			self.msg = self._receive(True)
+
+			if(self.msg) :
+				d = {}
+
+				#xml parsing
+				root = fromstring(str(self.msg))
+				content = root.find('content')
+				agentInfo = content.text.split("|")
+				name, priority, value, m = agentInfo[0], agentInfo[1], agentInfo[2], agentInfo[3]
+				d['name'] = name
+				d['priority'] = priority
+				d['value'] = value
+				d['m'] = m
+
+				added = 0
+
+				for i in range(len(self.myAgent.agent_view)) :
+					if d['name'] == self.myAgent.agent_view[i]['name'] :
+						self.myAgent.agent_view[i]['priority'] = d['priority']
+						self.myAgent.agent_view[i]['value'] = d['value']
+						self.myAgent.agent_view[i]['m'] = d['m']
+
+						added = 1
+
+				if added == 0 :
+					self.myAgent.agent_view.append(d)
+
+				print "recieve from " + name + " to " + self.myAgent.getName() + "\n"
 
 
 	def _setup(self) :
@@ -138,25 +228,79 @@ class JunctionController(spade.Agent.Agent) :
 
 		self.agent_view = []
 		self.good_list = []
-
-		"""print self.value
-		print self.agent_view
-		print self.good_list
-		print self.priority
-		"""
-
+		self.m = 0
+		self.Fstar = 0
 
 		sender = self.InitSend()
 		self.addBehaviour(sender, None)
 
 		init_template = spade.Behaviour.ACLTemplate()
 		init_template.setOntology("init")
-		mt = spade.Behaviour.MessageTemplate(init_template)
-		
+		mt1 = spade.Behaviour.MessageTemplate(init_template)
+
 		init = self.InitReceive()
-		self.addBehaviour(init, mt)
+		self.addBehaviour(init, mt1)
+
+		checkAgentView = self.CheckAgentView(2)
+		self.addBehaviour(checkAgentView, None)
+
+		value_template = spade.Behaviour.ACLTemplate()
+		value_template.setOntology("value")
+		mt2 = spade.Behaviour.MessageTemplate(value_template)
+
+		value = self.ValueReceive(2)
+		self.addBehaviour(value, mt2)
+
 		print "setup(over)\n"
 
+	def getfcost(self, agent, direction) :
+		if self.value == direction :
+			if agent['value'] == self.value :
+				return 0;
+
+			else :
+				return (float(VehiclesFrom(agent, self.name, direction)) / float(self.priority))
+
+		else :
+			return 2 * (float(VehiclesFrom(agent, self.name, direction)) / float(self.priority))
+
+
+	def getFcost(self) :
+		Fcost = 0
+
+		neighbours = getNeighbours(self.name)
+
+		nsTraffic = 0
+		ewTraffic = 0
+
+		i, j = getAgentLoc(self.name)
+
+		for neighbour in neighbours :
+			if neighbour[0] == i and neighbour[1] < j :
+				ewTraffic += traffic['row'][neighbour[1]]
+
+			elif neighbour[0] == i and neighbour[1] > j :
+				ewTraffic += traffic['row'][j]
+
+			elif neighbour[1] == j and neighbour[0] < i :
+				nsTraffic += traffic['col'][neighbour[0]]
+
+			elif neighbour[1] == j and neighbour[0] > i :
+				nsTraffic += traffic['col'][j]
+
+		if nsTraffic >= ewTraffic :
+			for agent in self.good_list :
+				agent_i, agent_j = getAgentLoc(agent['name'])
+				if agent_j == j :
+					Fcost += self.getfcost(agent, "NS")
+
+		else :
+			for agent in self.good_list :
+				agent_i, agent_j = getAgentLoc(agent['name'])
+				if agent_i == i :
+					Fcost += self.getfcost(agent, "EW")
+
+		return Fcost
 
 if __name__ == "__main__" :
 	traffic = initializeTraffic(GRID_SIZE)
