@@ -1,0 +1,22 @@
+<fipa-message act="inform">
+	<sender>
+		<agent-identifier>
+			<name id="junction_0_0@127.0.0.1@127.0.0.1"/>
+			<addresses>
+				<url href="xmpp://junction_0_0@127.0.0.1@127.0.0.1"/>
+			</addresses>
+		</agent-identifier>
+	</sender>
+	<receiver>
+		<agent-identifier>
+			<name id="junction_0_1@127.0.0.1"/>
+			<addresses>
+				<url href="xmpp://junction_0_1@127.0.0.1"/>
+			</addresses>
+		</agent-identifier>
+	</receiver>
+	<content>junction_0_1@127.0.0.1|45|NS</content>
+	<language>OWL-S</language>
+	<ontology>init</ontology>
+	<conversation-id>677446f6a372433aa7e281becde007eb</conversation-id>
+</fipa-message>

@@ -1,5 +1,6 @@
 import spade
 import random
+from xml.etree.ElementTree import XML, fromstring, tostring
 
 GRID_SIZE = 2
 
@@ -78,7 +79,7 @@ def getNeighbours(name) :
 
 class JunctionController(spade.Agent.Agent) :
 
-	class InitReceive(spade.Behaviour.Behaviour) :
+	class InitReceive(spade.Behaviour.OneShotBehaviour) :
 		def _process(self) :
 			self.msg = None
 
@@ -86,19 +87,24 @@ class JunctionController(spade.Agent.Agent) :
 
 			if(self.msg) :
 				d = {}
-				agentInfo = self.msg.split('|')
+
+				#xml parsing
+				root = fromstring(str(self.msg))
+				content = root.find('content')
+				agentInfo = content.text.split("|")
 				name, priority, value = agentInfo[0], agentInfo[1], agentInfo[2]
 				d['name'] = name
 				d['priority'] = priority
 				d['value'] = value
 
-				self.agent_view.append(d)
-				self.good_list.append(d)
+				self.myAgent.agent_view.append(d)
+				self.myAgent.good_list.append(d)
 
-				print name + " in " + self.getName()
+				print "recieve from " + name + " to " + self.myAgent.getName() + "\n"
+				# print name + " in " + self.myAgent.getName()
 
 
-	class InitSend(spade.Behaviour.Behaviour) :
+	class InitSend(spade.Behaviour.OneShotBehaviour) :
 		def _process(self) :
 			neighbours = getNeighbours(self.getName())
 
@@ -111,17 +117,15 @@ class JunctionController(spade.Agent.Agent) :
 				self.msg.setOntology("init")
 				self.msg.setLanguage("OWL-S")
 				self.msg.addReceiver(receiver)
-				self.msg.setContent(self.getName() + '|' + self.priority + '|' + self.value)
+				# print self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value)
+				self.msg.setContent(self.myAgent.getName() + '|' + str(self.myAgent.priority) + '|' + str(self.myAgent.value))
 
-				print "here"
-
-				self.JunctionController.send(self.msg)
-
-				print "send from " + self.getName() + " to " + str(neighbour) + " : " + self.msg
+				self.myAgent.send(self.msg)
+				print "send from " + self.getName() + " to " + str(neighbour) + " : " + self.msg.getContent() + "\n"
 
 
 	def _setup(self) :
-		print "Starting agent : ", self.getName()
+		print "Setup agent: ", self.getName() + "\n"
 
 		self.priority = getPriority(self.getName())
 
@@ -135,6 +139,12 @@ class JunctionController(spade.Agent.Agent) :
 		self.agent_view = []
 		self.good_list = []
 
+		"""print self.value
+		print self.agent_view
+		print self.good_list
+		print self.priority
+		"""
+
 
 		sender = self.InitSend()
 		self.addBehaviour(sender, None)
@@ -145,6 +155,7 @@ class JunctionController(spade.Agent.Agent) :
 		
 		init = self.InitReceive()
 		self.addBehaviour(init, mt)
+		print "setup(over)\n"
 
 
 if __name__ == "__main__" :
